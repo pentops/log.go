@@ -11,8 +11,9 @@ import (
 func TestSimpleFormatter(t *testing.T) {
 
 	buff := bytes.NewBuffer([]byte{})
-	sl := simpleLogger{
-		output: buff,
+	sl := &SimpleLogger{
+		Output:  buff,
+		Context: DefaultContext,
 	}
 
 	sl.Debug(context.Background(), "Message")
@@ -38,8 +39,9 @@ func (nojson) MarshalJSON() ([]byte, error) {
 func TestSimpleFormatterError(t *testing.T) {
 
 	buff := bytes.NewBuffer([]byte{})
-	sl := simpleLogger{
-		output: buff,
+	sl := &SimpleLogger{
+		Output:  buff,
+		Context: DefaultContext,
 	}
 
 	ctx := context.Background()

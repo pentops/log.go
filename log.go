@@ -12,12 +12,11 @@ type Logger interface {
 	Debug(context.Context, string)
 	Info(context.Context, string)
 	Error(context.Context, string)
-	ContextProvider
 }
 
 var DefaultLogger Logger = SimpleLogger{
-	Output:          os.Stderr,
-	ContextProvider: &simpleContext{},
+	Output:  os.Stderr,
+	Context: DefaultContext,
 }
 
 func Debug(ctx context.Context, msg string) {
@@ -44,9 +43,9 @@ func Errorf(ctx context.Context, msg string, params ...interface{}) {
 	DefaultLogger.Error(ctx, fmt.Sprintf(msg, params...))
 }
 
-var contextKey = struct{}{}
+var DefaultContext ContextProvider = &SimpleContext{}
 
-// WrappedContext is both a context and a logger, allowing either syntax convention,
+// WrappedContext is both a context and a logger, allowing either syntax
 // log.WithField(ctx, "key", "val").Debug()
 // or
 // ctx = log.WithField(ctx, "key", "val")
@@ -69,7 +68,7 @@ func (ctx WrappedContext) Error(msg string) {
 
 func WithFields(ctx context.Context, fields map[string]interface{}) *WrappedContext {
 	return &WrappedContext{
-		Context: DefaultLogger.WithFields(ctx, fields),
+		Context: DefaultContext.WithFields(ctx, fields),
 		Logger:  DefaultLogger,
 	}
 }
@@ -80,4 +79,11 @@ func WithField(ctx context.Context, key string, value interface{}) *WrappedConte
 
 func WithError(ctx context.Context, err error) *WrappedContext {
 	return WithField(ctx, "error", err.Error())
+}
+
+func WithTrace(ctx context.Context, value string) *WrappedContext {
+	return &WrappedContext{
+		Context: DefaultContext.WithTrace(ctx, value),
+		Logger:  DefaultLogger,
+	}
 }

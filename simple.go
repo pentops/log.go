@@ -11,13 +11,14 @@ type logFormatter func(io.Writer, logEntry)
 
 type ExtractorFunc func(context.Context, map[string]interface{})
 
-type simpleContext struct {
+type SimpleContext struct {
 	extractors []ExtractorFunc
 }
 
 var simpleContextKey struct{}
+var simpleTraceKey struct{}
 
-func (sc simpleContext) WithFields(parent context.Context, fields map[string]interface{}) context.Context {
+func (sc SimpleContext) WithFields(parent context.Context, fields map[string]interface{}) context.Context {
 	existing, ok := parent.Value(simpleContextKey).(map[string]interface{})
 	if !ok {
 		return context.WithValue(parent, simpleContextKey, fields)
@@ -32,11 +33,11 @@ func (sc simpleContext) WithFields(parent context.Context, fields map[string]int
 	return context.WithValue(parent, simpleContextKey, newMap)
 }
 
-func (sc *simpleContext) AddExtractor(cb ExtractorFunc) {
+func (sc *SimpleContext) AddExtractor(cb ExtractorFunc) {
 	sc.extractors = append(sc.extractors, cb)
 }
 
-func (sc simpleContext) FromContext(ctx context.Context) map[string]interface{} {
+func (sc SimpleContext) FromContext(ctx context.Context) map[string]interface{} {
 	values, ok := ctx.Value(simpleContextKey).(map[string]interface{})
 	if !ok {
 		values = map[string]interface{}{}
@@ -57,16 +58,30 @@ func (sc simpleContext) FromContext(ctx context.Context) map[string]interface{} 
 	return values
 }
 
+func (sc SimpleContext) WithTrace(ctx context.Context, value string) context.Context {
+	return context.WithValue(ctx, simpleTraceKey, value)
+}
+
+func (sc SimpleContext) GetTrace(ctx context.Context) string {
+	val, ok := ctx.Value(simpleTraceKey).(string)
+	if !ok {
+		return ""
+	}
+	return val
+}
+
 type ContextProvider interface {
 	FromContext(context.Context) map[string]interface{}
 	WithFields(context.Context, map[string]interface{}) context.Context
+	WithTrace(context.Context, string) context.Context
+	GetTrace(context.Context) string
 	AddExtractor(ExtractorFunc)
 }
 
 type SimpleLogger struct {
-	Output io.Writer
-	Format logFormatter
-	ContextProvider
+	Output  io.Writer
+	Format  logFormatter
+	Context ContextProvider
 }
 
 const (
@@ -91,7 +106,7 @@ func (sl SimpleLogger) log(ctx context.Context, level string, msg string) {
 		Level:   level,
 		Time:    time.Now(),
 		Message: msg,
-		Fields:  sl.FromContext(ctx),
+		Fields:  sl.Context.FromContext(ctx),
 	})
 }
 

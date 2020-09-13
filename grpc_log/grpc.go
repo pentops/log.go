@@ -5,8 +5,10 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	"gopkg.daemonl.com/log"
 
+	"github.com/google/uuid"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging"
 )
@@ -46,20 +48,31 @@ func evaluateServerOpt(opts []Option) *options {
 	return optCopy
 }
 
-func UnaryServerInterceptor(logger log.Logger, options ...Option) grpc.UnaryServerInterceptor {
+func UnaryServerInterceptor(logContextProvider log.ContextProvider, logger log.Logger, options ...Option) grpc.UnaryServerInterceptor {
 	o := evaluateServerOpt(options)
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		startTime := time.Now()
 		logFields := map[string]interface{}{
 			"method": info.FullMethod,
 		}
-		newCtx := logger.WithFields(ctx, logFields)
+		newCtx := logContextProvider.WithFields(ctx, logFields)
+
+		md, ok := metadata.FromIncomingContext(newCtx)
+		if ok {
+			traceHeader := md.Get("x-trace")
+			if len(traceHeader) > 0 {
+				newCtx = logContextProvider.WithTrace(newCtx, traceHeader[0])
+			} else {
+				newCtx = logContextProvider.WithTrace(newCtx, uuid.New().String())
+			}
+		}
+
 		resp, err := handler(newCtx, req)
 		if !o.shouldLog(info.FullMethod, err) {
 			return resp, err
 		}
 
-		logCtx := logger.WithFields(newCtx, map[string]interface{}{
+		logCtx := logContextProvider.WithFields(newCtx, map[string]interface{}{
 			"duration": float32(time.Since(startTime).Nanoseconds()/1000) / 1000,
 			"code":     o.codeFunc(err),
 		})
@@ -69,14 +82,25 @@ func UnaryServerInterceptor(logger log.Logger, options ...Option) grpc.UnaryServ
 	}
 }
 
-func StreamServerInterceptor(logger log.Logger, options ...Option) grpc.StreamServerInterceptor {
+func StreamServerInterceptor(logContextProvider log.ContextProvider, logger log.Logger, options ...Option) grpc.StreamServerInterceptor {
 	o := evaluateServerOpt(options)
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		startTime := time.Now()
 		logFields := map[string]interface{}{
 			"method": info.FullMethod,
 		}
-		newCtx := logger.WithFields(stream.Context(), logFields)
+		newCtx := logContextProvider.WithFields(stream.Context(), logFields)
+
+		md, ok := metadata.FromIncomingContext(newCtx)
+		if ok {
+			traceHeader := md.Get("x-trace")
+			if len(traceHeader) > 0 {
+				newCtx = logContextProvider.WithTrace(newCtx, traceHeader[0])
+			} else {
+				newCtx = logContextProvider.WithTrace(newCtx, uuid.New().String())
+			}
+		}
+
 		wrapped := grpc_middleware.WrapServerStream(stream)
 		wrapped.WrappedContext = newCtx
 
@@ -85,7 +109,7 @@ func StreamServerInterceptor(logger log.Logger, options ...Option) grpc.StreamSe
 			return err
 		}
 
-		logCtx := logger.WithFields(newCtx, map[string]interface{}{
+		logCtx := logContextProvider.WithFields(newCtx, map[string]interface{}{
 			"duration": float32(time.Since(startTime).Nanoseconds()/1000) / 1000,
 			"code":     o.codeFunc(err),
 		})
