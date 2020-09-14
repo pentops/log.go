@@ -116,10 +116,10 @@ func StreamServerInterceptor(
 		if ok {
 			traceHeader := md.Get("x-trace")
 			if len(traceHeader) > 0 {
-				newCtx = traceContextProvider.WithTrace(newCtx, traceHeader[0])
-			} else {
-				newCtx = traceContextProvider.WithTrace(newCtx, uuid.New().String())
+				traceHeader = []string{uuid.New().String()}
 			}
+			newCtx = traceContextProvider.WithTrace(newCtx, traceHeader[0])
+			newCtx = metadata.AppendToOutgoingContext(newCtx, "x-trace", traceHeader[0])
 		}
 
 		wrapped := grpc_middleware.WrapServerStream(stream)
