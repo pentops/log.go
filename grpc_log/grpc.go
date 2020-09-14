@@ -6,7 +6,6 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
-	"gopkg.daemonl.com/log"
 
 	"github.com/google/uuid"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
@@ -48,7 +47,24 @@ func evaluateServerOpt(opts []Option) *options {
 	return optCopy
 }
 
-func UnaryServerInterceptor(logContextProvider log.ContextProvider, logger log.Logger, options ...Option) grpc.UnaryServerInterceptor {
+type FieldContext interface {
+	WithFields(context.Context, map[string]interface{}) context.Context
+}
+
+type TraceContext interface {
+	WithTrace(context.Context, string) context.Context
+}
+
+type Logger interface {
+	Info(context.Context, string)
+}
+
+func UnaryServerInterceptor(
+	logContextProvider FieldContext,
+	traceContextProvider TraceContext,
+	logger Logger,
+	options ...Option,
+) grpc.UnaryServerInterceptor {
 	o := evaluateServerOpt(options)
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		startTime := time.Now()
@@ -61,9 +77,9 @@ func UnaryServerInterceptor(logContextProvider log.ContextProvider, logger log.L
 		if ok {
 			traceHeader := md.Get("x-trace")
 			if len(traceHeader) > 0 {
-				newCtx = logContextProvider.WithTrace(newCtx, traceHeader[0])
+				newCtx = traceContextProvider.WithTrace(newCtx, traceHeader[0])
 			} else {
-				newCtx = logContextProvider.WithTrace(newCtx, uuid.New().String())
+				newCtx = traceContextProvider.WithTrace(newCtx, uuid.New().String())
 			}
 		}
 
@@ -82,7 +98,12 @@ func UnaryServerInterceptor(logContextProvider log.ContextProvider, logger log.L
 	}
 }
 
-func StreamServerInterceptor(logContextProvider log.ContextProvider, logger log.Logger, options ...Option) grpc.StreamServerInterceptor {
+func StreamServerInterceptor(
+	logContextProvider FieldContext,
+	traceContextProvider TraceContext,
+	logger Logger,
+	options ...Option,
+) grpc.StreamServerInterceptor {
 	o := evaluateServerOpt(options)
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		startTime := time.Now()
@@ -95,9 +116,9 @@ func StreamServerInterceptor(logContextProvider log.ContextProvider, logger log.
 		if ok {
 			traceHeader := md.Get("x-trace")
 			if len(traceHeader) > 0 {
-				newCtx = logContextProvider.WithTrace(newCtx, traceHeader[0])
+				newCtx = traceContextProvider.WithTrace(newCtx, traceHeader[0])
 			} else {
-				newCtx = logContextProvider.WithTrace(newCtx, uuid.New().String())
+				newCtx = traceContextProvider.WithTrace(newCtx, uuid.New().String())
 			}
 		}
 

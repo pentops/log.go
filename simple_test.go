@@ -12,9 +12,9 @@ func TestSimpleFormatter(t *testing.T) {
 
 	buff := bytes.NewBuffer([]byte{})
 	sl := &SimpleLogger{
-		Output:  buff,
-		Context: DefaultContext,
+		Output: buff,
 	}
+	sl.AddCollector(DefaultContext)
 
 	sl.Debug(context.Background(), "Message")
 
@@ -40,9 +40,9 @@ func TestSimpleFormatterError(t *testing.T) {
 
 	buff := bytes.NewBuffer([]byte{})
 	sl := &SimpleLogger{
-		Output:  buff,
-		Context: DefaultContext,
+		Output: buff,
 	}
+	sl.AddCollector(DefaultContext)
 
 	ctx := context.Background()
 	ctx = WithField(ctx, "key", nojson{})

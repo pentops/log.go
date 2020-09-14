@@ -40,9 +40,9 @@ func captureLogger() (*SimpleLogger, chan logEntry) {
 		entries <- entry
 	}
 	return &SimpleLogger{
-		Format:  format,
-		Output:  ioutil.Discard,
-		Context: DefaultContext,
+		Format:     format,
+		Output:     ioutil.Discard,
+		Collectors: []ContextCollector{DefaultContext},
 	}, entries
 }
 

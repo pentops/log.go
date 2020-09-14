@@ -4,19 +4,22 @@ package log
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"time"
 )
 
 type Logger interface {
 	Debug(context.Context, string)
 	Info(context.Context, string)
 	Error(context.Context, string)
+	AddCollector(ContextCollector)
 }
 
-var DefaultLogger Logger = SimpleLogger{
-	Output:  os.Stderr,
-	Context: DefaultContext,
+var DefaultLogger Logger = &SimpleLogger{
+	Output: os.Stderr,
 }
 
 func Debug(ctx context.Context, msg string) {
@@ -43,47 +46,73 @@ func Errorf(ctx context.Context, msg string, params ...interface{}) {
 	DefaultLogger.Error(ctx, fmt.Sprintf(msg, params...))
 }
 
-var DefaultContext ContextProvider = &SimpleContext{}
-
-// WrappedContext is both a context and a logger, allowing either syntax
-// log.WithField(ctx, "key", "val").Debug()
-// or
-// ctx = log.WithField(ctx, "key", "val")
-type WrappedContext struct {
-	context.Context
-	Logger Logger
+type SimpleLogger struct {
+	Output     io.Writer
+	Format     logFormatter
+	Collectors []ContextCollector
 }
 
-func (ctx WrappedContext) Debug(msg string) {
-	ctx.Logger.Debug(ctx, msg)
+type ContextCollector interface {
+	LogFieldsFromContext(context.Context) map[string]interface{}
 }
 
-func (ctx WrappedContext) Info(msg string) {
-	ctx.Logger.Info(ctx, msg)
+const (
+	debugLevel = "DEBUG"
+	infoLevel  = "INFO"
+	errorLevel = "ERROR"
+)
+
+type logEntry struct {
+	Level   string                 `json:"level"`
+	Time    time.Time              `json:"time"`
+	Message string                 `json:"message"`
+	Fields  map[string]interface{} `json:"fields"`
 }
 
-func (ctx WrappedContext) Error(msg string) {
-	ctx.Logger.Error(ctx, msg)
-}
-
-func WithFields(ctx context.Context, fields map[string]interface{}) *WrappedContext {
-	return &WrappedContext{
-		Context: DefaultContext.WithFields(ctx, fields),
-		Logger:  DefaultLogger,
+func jsonFormatter(out io.Writer, entry logEntry) {
+	logLine, err := json.Marshal(entry)
+	if err != nil {
+		logLine, _ = json.Marshal(logEntry{
+			Message: entry.Message,
+			Time:    entry.Time,
+			Level:   entry.Level,
+			// Not passing through fields which is where the error would have
+			// been
+		})
 	}
+	out.Write(append(logLine, '\n'))
 }
 
-func WithField(ctx context.Context, key string, value interface{}) *WrappedContext {
-	return WithFields(ctx, map[string]interface{}{key: value})
-}
-
-func WithError(ctx context.Context, err error) *WrappedContext {
-	return WithField(ctx, "error", err.Error())
-}
-
-func WithTrace(ctx context.Context, value string) *WrappedContext {
-	return &WrappedContext{
-		Context: DefaultContext.WithTrace(ctx, value),
-		Logger:  DefaultLogger,
+func (sl SimpleLogger) log(ctx context.Context, level string, msg string) {
+	if sl.Format == nil {
+		// lazy default
+		sl.Format = jsonFormatter
 	}
+
+	fields := map[string]interface{}{}
+	for _, cb := range sl.Collectors {
+		for k, v := range cb.LogFieldsFromContext(ctx) {
+			fields[k] = v
+		}
+	}
+
+	sl.Format(sl.Output, logEntry{
+		Level:   level,
+		Time:    time.Now(),
+		Message: msg,
+		Fields:  fields,
+	})
+}
+
+func (sl SimpleLogger) Debug(ctx context.Context, msg string) {
+	sl.log(ctx, debugLevel, msg)
+}
+func (sl SimpleLogger) Info(ctx context.Context, msg string) {
+	sl.log(ctx, infoLevel, msg)
+}
+func (sl SimpleLogger) Error(ctx context.Context, msg string) {
+	sl.log(ctx, errorLevel, msg)
+}
+func (sl *SimpleLogger) AddCollector(collector ContextCollector) {
+	sl.Collectors = append(sl.Collectors, collector)
 }
