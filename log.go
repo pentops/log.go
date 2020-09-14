@@ -46,6 +46,19 @@ func Errorf(ctx context.Context, msg string, params ...interface{}) {
 	DefaultLogger.Error(ctx, fmt.Sprintf(msg, params...))
 }
 
+// Fatal logs, then causes the current program to exit status 1
+// The program terminates immediately; deferred functions are not run.
+func Fatal(ctx context.Context, msg string) {
+	DefaultLogger.Error(ctx, msg)
+	os.Exit(1)
+}
+
+// Fatalf logs, then causes the current program to exit status 1
+// The program terminates immediately; deferred functions are not run.
+func Fatalf(ctx context.Context, msg string, params ...interface{}) {
+	Fatal(ctx, fmt.Sprintf(msg, params...))
+}
+
 type SimpleLogger struct {
 	Output     io.Writer
 	Format     logFormatter

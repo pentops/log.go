@@ -5,6 +5,14 @@ import (
 	"io"
 )
 
+type TraceContextProvider interface {
+	WithTrace(context.Context, string) context.Context
+	FromContext(context.Context) string
+	ContextCollector
+}
+
+var DefaultTrace TraceContextProvider = TraceContext{}
+
 type logFormatter func(io.Writer, logEntry)
 
 type TraceContext struct{}
