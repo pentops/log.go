@@ -19,7 +19,8 @@ type Logger interface {
 }
 
 var DefaultLogger Logger = &SimpleLogger{
-	Output: os.Stderr,
+	Output:     os.Stderr,
+	Collectors: []ContextCollector{DefaultContext, DefaultTrace},
 }
 
 func Debug(ctx context.Context, msg string) {

@@ -93,7 +93,7 @@ func UnaryServerInterceptor(
 			"code":     o.codeFunc(err),
 		})
 
-		logger.Info(logCtx, "done")
+		logger.Info(logCtx, "GRPC Handler Complete")
 		return resp, err
 	}
 }
@@ -135,7 +135,7 @@ func StreamServerInterceptor(
 			"code":     o.codeFunc(err),
 		})
 
-		logger.Info(logCtx, "done")
+		logger.Info(logCtx, "GRPC Stream Complete")
 		return err
 	}
 }
