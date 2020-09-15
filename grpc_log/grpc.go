@@ -83,6 +83,8 @@ func UnaryServerInterceptor(
 			}
 		}
 
+		logger.Info(newCtx, "GRPC Handler Begin")
+
 		resp, err := handler(newCtx, req)
 		if !o.shouldLog(info.FullMethod, err) {
 			return resp, err
