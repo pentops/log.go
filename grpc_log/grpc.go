@@ -75,12 +75,13 @@ func UnaryServerInterceptor(
 
 		md, ok := metadata.FromIncomingContext(newCtx)
 		if ok {
-			traceHeader := md.Get("x-trace")
-			if len(traceHeader) > 0 {
-				newCtx = traceContextProvider.WithTrace(newCtx, traceHeader[0])
-			} else {
-				newCtx = traceContextProvider.WithTrace(newCtx, uuid.New().String())
+			traceHeaders := md.Get("x-trace")
+			if len(traceHeaders) == 0 {
+				traceHeaders = []string{uuid.New().String()}
 			}
+			traceHeader := traceHeaders[0]
+			newCtx = traceContextProvider.WithTrace(newCtx, traceHeader)
+			newCtx = metadata.AppendToOutgoingContext(newCtx, "x-trace", traceHeader)
 		}
 
 		logger.Info(newCtx, "GRPC Handler Begin")
