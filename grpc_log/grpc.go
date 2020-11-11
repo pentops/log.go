@@ -96,6 +96,12 @@ func UnaryServerInterceptor(
 			"code":     o.codeFunc(err),
 		})
 
+		if err != nil {
+			logCtx = logContextProvider.WithFields(logCtx, map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+
 		logger.Info(logCtx, "GRPC Handler Complete")
 		return resp, err
 	}
