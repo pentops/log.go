@@ -2,10 +2,13 @@ package grpc_log
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/google/uuid"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
@@ -84,7 +87,10 @@ func UnaryServerInterceptor(
 			newCtx = metadata.AppendToOutgoingContext(newCtx, "x-trace", traceHeader)
 		}
 
-		logger.Info(newCtx, "GRPC Handler Begin")
+		logger.Info(logContextProvider.
+			WithFields(newCtx, map[string]interface{}{
+				"body": logBody(req),
+			}), "GRPC Handler Begin")
 
 		resp, err := handler(newCtx, req)
 		if !o.shouldLog(info.FullMethod, err) {
@@ -105,6 +111,17 @@ func UnaryServerInterceptor(
 		logger.Info(logCtx, "GRPC Handler Complete")
 		return resp, err
 	}
+}
+
+func logBody(msg interface{}) string {
+	if p, ok := msg.(proto.Message); ok {
+		msgBytes, err := protojson.Marshal(p)
+		if err != nil {
+			return fmt.Sprintf("Marshal Error: %s", err.Error())
+		}
+		return string(msgBytes)
+	}
+	return fmt.Sprintf("Non proto message of type %T", msg)
 }
 
 func StreamServerInterceptor(
