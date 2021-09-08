@@ -18,10 +18,7 @@ type Logger interface {
 	AddCollector(ContextCollector)
 }
 
-var DefaultLogger Logger = &CallbackLogger{
-	Callback:   JSONLog(os.Stderr),
-	Collectors: []ContextCollector{DefaultContext, DefaultTrace},
-}
+var DefaultLogger Logger = NewCallbackLogger(JSONLog(os.Stderr))
 
 func Debug(ctx context.Context, msg string) {
 	DefaultLogger.Debug(ctx, msg)
@@ -65,6 +62,13 @@ type LogFunc func(level string, message string, fields map[string]interface{})
 type CallbackLogger struct {
 	Callback   LogFunc
 	Collectors []ContextCollector
+}
+
+func NewCallbackLogger(callback LogFunc) *CallbackLogger {
+	return &CallbackLogger{
+		Callback:   callback,
+		Collectors: []ContextCollector{DefaultContext, DefaultTrace},
+	}
 }
 
 func (sl CallbackLogger) Debug(ctx context.Context, msg string) {
