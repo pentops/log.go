@@ -2,7 +2,6 @@ package log
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -11,12 +10,14 @@ import (
 func TestSimpleFormatter(t *testing.T) {
 
 	buff := bytes.NewBuffer([]byte{})
-	sl := &SimpleLogger{
-		Output: buff,
-	}
-	sl.AddCollector(DefaultContext)
 
-	sl.Debug(context.Background(), "Message")
+	jsonFormatter(buff, logEntry{
+		Level:   "DEBUG",
+		Message: "Message",
+		Fields: map[string]interface{}{
+			"key": "val",
+		},
+	})
 
 	loggedJSON := buff.Bytes()
 	logged := map[string]interface{}{}
@@ -39,14 +40,14 @@ func (nojson) MarshalJSON() ([]byte, error) {
 func TestSimpleFormatterError(t *testing.T) {
 
 	buff := bytes.NewBuffer([]byte{})
-	sl := &SimpleLogger{
-		Output: buff,
-	}
-	sl.AddCollector(DefaultContext)
 
-	ctx := context.Background()
-	ctx = WithField(ctx, "key", nojson{})
-	sl.Debug(ctx, "Message")
+	jsonFormatter(buff, logEntry{
+		Level:   "DEBUG",
+		Message: "Message",
+		Fields: map[string]interface{}{
+			"key": nojson{},
+		},
+	})
 
 	loggedJSON := buff.Bytes()
 	logged := map[string]interface{}{}

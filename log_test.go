@@ -2,9 +2,8 @@ package log
 
 import (
 	"context"
-	"io"
-	"io/ioutil"
 	"testing"
+	"time"
 )
 
 type testLogger chan logEntry
@@ -34,14 +33,18 @@ func assertEntry(t *testing.T, want logEntry, got logEntry) {
 
 }
 
-func captureLogger() (*SimpleLogger, chan logEntry) {
+func captureLogger() (Logger, chan logEntry) {
 	entries := make(chan logEntry, 1)
-	format := func(out io.Writer, entry logEntry) {
-		entries <- entry
+	format := func(level string, msg string, fields map[string]interface{}) {
+		entries <- logEntry{
+			Level:   level,
+			Time:    time.Now(),
+			Message: msg,
+			Fields:  fields,
+		}
 	}
-	return &SimpleLogger{
-		Format:     format,
-		Output:     ioutil.Discard,
+	return &CallbackLogger{
+		Callback:   format,
 		Collectors: []ContextCollector{DefaultContext},
 	}, entries
 }

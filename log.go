@@ -18,8 +18,8 @@ type Logger interface {
 	AddCollector(ContextCollector)
 }
 
-var DefaultLogger Logger = &SimpleLogger{
-	Output:     os.Stderr,
+var DefaultLogger Logger = &CallbackLogger{
+	Callback:   JSONLog(os.Stderr),
 	Collectors: []ContextCollector{DefaultContext, DefaultTrace},
 }
 
@@ -60,10 +60,34 @@ func Fatalf(ctx context.Context, msg string, params ...interface{}) {
 	Fatal(ctx, fmt.Sprintf(msg, params...))
 }
 
-type SimpleLogger struct {
-	Output     io.Writer
-	Format     logFormatter
+type LogFunc func(level string, message string, fields map[string]interface{})
+
+type CallbackLogger struct {
+	Callback   LogFunc
 	Collectors []ContextCollector
+}
+
+func (sl CallbackLogger) Debug(ctx context.Context, msg string) {
+	sl.log(ctx, debugLevel, msg)
+}
+func (sl CallbackLogger) Info(ctx context.Context, msg string) {
+	sl.log(ctx, infoLevel, msg)
+}
+func (sl CallbackLogger) Error(ctx context.Context, msg string) {
+	sl.log(ctx, errorLevel, msg)
+}
+func (sl *CallbackLogger) AddCollector(collector ContextCollector) {
+	sl.Collectors = append(sl.Collectors, collector)
+}
+
+func (sl CallbackLogger) log(ctx context.Context, level string, msg string) {
+	fields := map[string]interface{}{}
+	for _, cb := range sl.Collectors {
+		for k, v := range cb.LogFieldsFromContext(ctx) {
+			fields[k] = v
+		}
+	}
+	sl.Callback(level, msg, fields)
 }
 
 type ContextCollector interface {
@@ -97,36 +121,13 @@ func jsonFormatter(out io.Writer, entry logEntry) {
 	out.Write(append(logLine, '\n'))
 }
 
-func (sl SimpleLogger) log(ctx context.Context, level string, msg string) {
-	if sl.Format == nil {
-		// lazy default
-		sl.Format = jsonFormatter
+func JSONLog(out io.Writer) LogFunc {
+	return func(level string, msg string, fields map[string]interface{}) {
+		jsonFormatter(out, logEntry{
+			Level:   level,
+			Time:    time.Now(),
+			Message: msg,
+			Fields:  fields,
+		})
 	}
-
-	fields := map[string]interface{}{}
-	for _, cb := range sl.Collectors {
-		for k, v := range cb.LogFieldsFromContext(ctx) {
-			fields[k] = v
-		}
-	}
-
-	sl.Format(sl.Output, logEntry{
-		Level:   level,
-		Time:    time.Now(),
-		Message: msg,
-		Fields:  fields,
-	})
-}
-
-func (sl SimpleLogger) Debug(ctx context.Context, msg string) {
-	sl.log(ctx, debugLevel, msg)
-}
-func (sl SimpleLogger) Info(ctx context.Context, msg string) {
-	sl.log(ctx, infoLevel, msg)
-}
-func (sl SimpleLogger) Error(ctx context.Context, msg string) {
-	sl.log(ctx, errorLevel, msg)
-}
-func (sl *SimpleLogger) AddCollector(collector ContextCollector) {
-	sl.Collectors = append(sl.Collectors, collector)
 }
