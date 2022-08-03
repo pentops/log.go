@@ -98,8 +98,8 @@ func UnaryServerInterceptor(
 		}
 
 		logCtx := logContextProvider.WithFields(newCtx, map[string]interface{}{
-			"duration": float32(time.Since(startTime).Nanoseconds()/1000) / 1000,
-			"code":     o.codeFunc(err),
+			"durationSeconds": float32(time.Since(startTime).Nanoseconds()/1000) / 1000000,
+			"code":            o.codeFunc(err),
 		})
 
 		if err != nil {
