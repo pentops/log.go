@@ -80,7 +80,10 @@ func UnaryServerInterceptor(
 		if ok {
 			traceHeaders := md.Get("x-trace")
 			if len(traceHeaders) == 0 {
-				traceHeaders = []string{uuid.New().String()}
+				traceHeaders = md.Get("x-request-id")
+				if len(traceHeaders) == 0 {
+					traceHeaders = []string{uuid.New().String()}
+				}
 			}
 			traceHeader := traceHeaders[0]
 			newCtx = traceContextProvider.WithTrace(newCtx, traceHeader)
