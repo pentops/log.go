@@ -99,6 +99,8 @@ func UnaryServerInterceptor(
 			newCtx = metadata.AppendToOutgoingContext(newCtx, "x-trace", traceHeader)
 		}
 
+		defer logPanic(ctx, logContextProvider, logger)
+
 		resp, err := handler(newCtx, req)
 		if !o.shouldLog(info.FullMethod, err) {
 			return resp, err
@@ -139,6 +141,16 @@ func logBody(msg interface{}) string {
 		return string(msgBytes)
 	}
 	return fmt.Sprintf("Non proto message of type %T", msg)
+}
+
+func logPanic(ctx context.Context, logContextProvider FieldContext, logger Logger) {
+	if err := recover(); err != nil {
+		newCtx := logContextProvider.WithFields(ctx, map[string]interface{}{
+			"error": err,
+		})
+
+		logger.Info(newCtx, "GRPC Handler Begin & Panic")
+	}
 }
 
 func StreamServerInterceptor(
