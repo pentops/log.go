@@ -16,8 +16,9 @@ import (
 )
 
 type options struct {
-	shouldLog grpc_logging.Decider
-	codeFunc  grpc_logging.ErrorToCode
+	shouldLog     grpc_logging.Decider
+	shouldLogBody grpc_logging.Decider
+	codeFunc      grpc_logging.ErrorToCode
 }
 
 type Option func(*options)
@@ -36,9 +37,17 @@ func WithCodes(f grpc_logging.ErrorToCode) Option {
 	}
 }
 
+// WithRequestBody customizes the function for deciding if the gRPC interceptor logs the request body.
+func WithRequestBody(f grpc_logging.Decider) Option {
+	return func(o *options) {
+		o.shouldLogBody = f
+	}
+}
+
 var defaultOptions = &options{
-	shouldLog: grpc_logging.DefaultDeciderMethod,
-	codeFunc:  grpc_logging.DefaultErrorToCode,
+	shouldLog:     grpc_logging.DefaultDeciderMethod,
+	shouldLogBody: grpc_logging.DefaultDeciderMethod,
+	codeFunc:      grpc_logging.DefaultErrorToCode,
 }
 
 func evaluateServerOpt(opts []Option) *options {
@@ -90,17 +99,24 @@ func UnaryServerInterceptor(
 			newCtx = metadata.AppendToOutgoingContext(newCtx, "x-trace", traceHeader)
 		}
 
-		logger.Info(logContextProvider.
-			WithFields(newCtx, map[string]interface{}{
-				"body": logBody(req),
-			}), "GRPC Handler Begin")
+		defer logPanic(ctx, logContextProvider, logger)
 
 		resp, err := handler(newCtx, req)
 		if !o.shouldLog(info.FullMethod, err) {
 			return resp, err
 		}
 
-		logCtx := logContextProvider.WithFields(newCtx, map[string]interface{}{
+		logCtx := logContextProvider.WithFields(newCtx, nil)
+
+		if o.shouldLogBody(info.FullMethod, err) {
+			logCtx = logContextProvider.WithFields(logCtx, map[string]interface{}{
+				"body": logBody(req),
+			})
+		}
+
+		logger.Info(logCtx, "GRPC Handler Begin")
+
+		logCtx = logContextProvider.WithFields(newCtx, map[string]interface{}{
 			"durationSeconds": float32(time.Since(startTime).Nanoseconds()/1000) / 1000000,
 			"code":            o.codeFunc(err),
 		})
@@ -125,6 +141,16 @@ func logBody(msg interface{}) string {
 		return string(msgBytes)
 	}
 	return fmt.Sprintf("Non proto message of type %T", msg)
+}
+
+func logPanic(ctx context.Context, logContextProvider FieldContext, logger Logger) {
+	if err := recover(); err != nil {
+		newCtx := logContextProvider.WithFields(ctx, map[string]interface{}{
+			"error": err,
+		})
+
+		logger.Info(newCtx, "GRPC Handler Begin & Panic")
+	}
 }
 
 func StreamServerInterceptor(
