@@ -49,6 +49,12 @@ func captureLogger() (Logger, chan logEntry) {
 	}, entries
 }
 
+const (
+	debugLevel = "DEBUG"
+	infoLevel  = "INFO"
+	errorLevel = "ERROR"
+)
+
 func TestDefaultLogger(t *testing.T) {
 	logger, entries := captureLogger()
 	DefaultLogger = logger

@@ -9,6 +9,8 @@ import (
 	"io"
 	"os"
 	"time"
+
+	"golang.org/x/exp/slog"
 )
 
 type Logger interface {
@@ -16,6 +18,8 @@ type Logger interface {
 	Info(context.Context, string)
 	Error(context.Context, string)
 	AddCollector(ContextCollector)
+
+	ErrorContext(ctx context.Context, msg string, args ...any)
 }
 
 var DefaultLogger Logger = NewCallbackLogger(JSONLog(os.Stderr))
@@ -72,37 +76,61 @@ func NewCallbackLogger(callback LogFunc) *CallbackLogger {
 }
 
 func (sl CallbackLogger) Debug(ctx context.Context, msg string) {
-	sl.log(ctx, debugLevel, msg)
+	sl.log(ctx, slog.LevelDebug, msg)
 }
 func (sl CallbackLogger) Info(ctx context.Context, msg string) {
-	sl.log(ctx, infoLevel, msg)
+	sl.log(ctx, slog.LevelInfo, msg)
 }
 func (sl CallbackLogger) Error(ctx context.Context, msg string) {
-	sl.log(ctx, errorLevel, msg)
+	sl.log(ctx, slog.LevelError, msg)
 }
 func (sl *CallbackLogger) AddCollector(collector ContextCollector) {
 	sl.Collectors = append(sl.Collectors, collector)
 }
 
-func (sl CallbackLogger) log(ctx context.Context, level string, msg string) {
+func (sl CallbackLogger) InfoContext(ctx context.Context, msg string, args ...any) {
+	sl.slog(ctx, slog.LevelInfo, msg, args)
+}
+
+func (sl CallbackLogger) DebugContext(ctx context.Context, msg string, args ...any) {
+	sl.slog(ctx, slog.LevelDebug, msg, args)
+}
+
+func (sl CallbackLogger) ErrorContext(ctx context.Context, msg string, args ...any) {
+	sl.slog(ctx, slog.LevelError, msg, args)
+}
+
+func (sl CallbackLogger) slog(ctx context.Context, level slog.Level, msg string, args []any) {
+	fields := sl.extractFields(ctx)
+
+	// Using record to extract the args into a map
+	record := slog.NewRecord(time.Time{}, level, msg, 0)
+	record.Add(args...)
+	record.Attrs(func(attr slog.Attr) bool {
+		fields[attr.Key] = attr.Value
+		return true
+	})
+	sl.Callback(level.String(), msg, fields)
+}
+
+func (sl CallbackLogger) extractFields(ctx context.Context) map[string]interface{} {
 	fields := map[string]interface{}{}
 	for _, cb := range sl.Collectors {
 		for k, v := range cb.LogFieldsFromContext(ctx) {
 			fields[k] = v
 		}
 	}
-	sl.Callback(level, msg, fields)
+	return fields
+}
+
+func (sl CallbackLogger) log(ctx context.Context, level slog.Level, msg string) {
+	fields := sl.extractFields(ctx)
+	sl.Callback(level.String(), msg, fields)
 }
 
 type ContextCollector interface {
 	LogFieldsFromContext(context.Context) map[string]interface{}
 }
-
-const (
-	debugLevel = "DEBUG"
-	infoLevel  = "INFO"
-	errorLevel = "ERROR"
-)
 
 type logEntry struct {
 	Level   string                 `json:"level"`
