@@ -3,6 +3,8 @@ package grpc_log
 import (
 	"context"
 	"fmt"
+	"runtime"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc"
@@ -145,11 +147,25 @@ func logBody(msg interface{}) string {
 
 func logPanic(ctx context.Context, logContextProvider FieldContext, logger Logger) {
 	if err := recover(); err != nil {
+		into := make([]byte, 1024)
+		runtime.Stack(into, false)
+
+		stack := strings.Split(string(into), "\n")
+		if len(stack) > 5 {
+			// cut off the useless lines from panic to here
+			stack = stack[5:]
+		}
+		for i, line := range stack {
+			// tabs don't work well in JSON format
+			stack[i] = strings.Replace(line, "\t", "    ", 1)
+		}
+
 		newCtx := logContextProvider.WithFields(ctx, map[string]interface{}{
 			"error": err,
+			"stack": stack,
 		})
 
-		logger.Info(newCtx, "GRPC Handler Begin & Panic")
+		logger.Info(newCtx, "GRPC Handler Panic")
 	}
 }
 
