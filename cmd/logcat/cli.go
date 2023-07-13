@@ -40,9 +40,6 @@ func main() {
 		innerFields, hasFields := fields["fields"].(map[string]interface{})
 
 		if hasLevel && hasMessage && hasFields && len(fields) == 3 {
-			delete(fields, "level")
-			delete(fields, "message")
-			delete(fields, "fields")
 			fields = innerFields
 			whichColor, ok := levelColors[strings.ToLower(level)]
 			if !ok {
