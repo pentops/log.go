@@ -1,4 +1,4 @@
-module gopkg.daemonl.com/log
+module github.com/pentops/log.go
 
 go 1.20
 
