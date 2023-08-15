@@ -153,13 +153,28 @@ func jsonFormatter(out io.Writer, entry logEntry) {
 	out.Write(append(logLine, '\n'))
 }
 
+func SimplifyFields(fields map[string]interface{}) map[string]interface{} {
+	simplified := map[string]interface{}{}
+	for k, v := range fields {
+		if err, ok := v.(error); ok {
+			v = err.Error()
+		} else if err, ok := v.(fmt.Stringer); ok {
+			v = err.String()
+		}
+
+		simplified[k] = v
+	}
+	return simplified
+}
+
 func JSONLog(out io.Writer) LogFunc {
 	return func(level string, msg string, fields map[string]interface{}) {
+
 		jsonFormatter(out, logEntry{
 			Level:   level,
 			Time:    time.Now(),
 			Message: msg,
-			Fields:  fields,
+			Fields:  SimplifyFields(fields),
 		})
 	}
 }
