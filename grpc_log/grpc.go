@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
@@ -101,36 +103,45 @@ func UnaryServerInterceptor(
 			newCtx = metadata.AppendToOutgoingContext(newCtx, "x-trace", traceHeader)
 		}
 
-		defer logPanic(ctx, logContextProvider, logger)
-
-		resp, err := handler(newCtx, req)
-		if !o.shouldLog(info.FullMethod, err) {
-			return resp, err
-		}
-
 		logCtx := logContextProvider.WithFields(newCtx, nil)
-
-		if o.shouldLogBody(info.FullMethod, err) {
-			logCtx = logContextProvider.WithFields(logCtx, map[string]interface{}{
-				"body": logBody(req),
-			})
-		}
 
 		logger.Info(logCtx, "GRPC Handler Begin")
 
-		logCtx = logContextProvider.WithFields(newCtx, map[string]interface{}{
+		var resp interface{}
+		var mainError error
+		func() {
+			defer func() {
+				if err := recover(); err != nil {
+					logPanic(ctx, logContextProvider, err, logger)
+					mainError = status.Error(codes.Internal, "Internal Error")
+				}
+			}()
+			resp, mainError = handler(newCtx, req)
+		}()
+
+		if o.shouldLogBody(info.FullMethod, mainError) {
+			logCtx = logContextProvider.WithFields(logCtx, map[string]interface{}{
+				"requestBody": logBody(req),
+			})
+		}
+
+		if !o.shouldLog(info.FullMethod, mainError) {
+			return resp, mainError
+		}
+
+		logCtx = logContextProvider.WithFields(logCtx, map[string]interface{}{
 			"durationSeconds": float32(time.Since(startTime).Nanoseconds()/1000) / 1000000,
-			"code":            o.codeFunc(err),
+			"code":            o.codeFunc(mainError),
 		})
 
-		if err != nil {
+		if mainError != nil {
 			logCtx = logContextProvider.WithFields(logCtx, map[string]interface{}{
-				"error": err.Error(),
+				"error": mainError.Error(),
 			})
 		}
 
 		logger.Info(logCtx, "GRPC Handler Complete")
-		return resp, err
+		return resp, mainError
 	}
 }
 
@@ -145,28 +156,26 @@ func logBody(msg interface{}) string {
 	return fmt.Sprintf("Non proto message of type %T", msg)
 }
 
-func logPanic(ctx context.Context, logContextProvider FieldContext, logger Logger) {
-	if err := recover(); err != nil {
-		into := make([]byte, 1024)
-		runtime.Stack(into, false)
+func logPanic(ctx context.Context, logContextProvider FieldContext, panicString interface{}, logger Logger) {
+	into := make([]byte, 2048)
+	runtime.Stack(into, false)
 
-		stack := strings.Split(string(into), "\n")
-		if len(stack) > 5 {
-			// cut off the useless lines from panic to here
-			stack = stack[5:]
-		}
-		for i, line := range stack {
-			// tabs don't work well in JSON format
-			stack[i] = strings.Replace(line, "\t", "    ", 1)
-		}
-
-		newCtx := logContextProvider.WithFields(ctx, map[string]interface{}{
-			"error": err,
-			"stack": stack,
-		})
-
-		logger.Info(newCtx, "GRPC Handler Panic")
+	stack := strings.Split(string(into), "\n")
+	if len(stack) > 5 {
+		// cut off the useless lines from panic to here
+		stack = stack[5:]
 	}
+	for i, line := range stack {
+		// tabs don't work well in JSON format
+		stack[i] = strings.Replace(line, "\t", "    ", 1)
+	}
+
+	newCtx := logContextProvider.WithFields(ctx, map[string]interface{}{
+		"error": panicString,
+		"stack": stack,
+	})
+
+	logger.Info(newCtx, "GRPC Handler Panic")
 }
 
 func StreamServerInterceptor(

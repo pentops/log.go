@@ -5,27 +5,45 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 
 	"github.com/fatih/color"
 )
 
 func main() {
+	fmt.Printf("LogCat Begin\n")
 
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Split(bufio.ScanLines)
+
+	lastLine := map[string]interface{}{}
+	didDots := false
 	for scanner.Scan() {
 		line := scanner.Text()
 		if len(line) < 1 {
 			continue
 		}
-		if line[0] != '{' {
+		before, after, found := strings.Cut(line, " | ")
+		if !found {
+			after = before
+		}
+		if after[0] != '{' {
+			if didDots {
+				fmt.Printf("\n")
+			}
+			didDots = false
+			lastLine = map[string]interface{}{}
 			fmt.Println(line)
 			continue
 		}
 
+		if found {
+			fmt.Printf("%s\n", before)
+		}
+
 		fields := map[string]interface{}{}
-		err := json.Unmarshal([]byte(line), &fields)
+		err := json.Unmarshal([]byte(after), &fields)
 		if err != nil {
 			fmt.Printf("<invalid JSON> %s\n", line)
 			continue
@@ -34,6 +52,17 @@ func main() {
 		if _, ok := fields["time"]; ok {
 			delete(fields, "time")
 		}
+
+		if reflect.DeepEqual(fields, lastLine) {
+			fmt.Printf(".")
+			didDots = true
+			continue
+		}
+		lastLine = fields
+		if didDots {
+			fmt.Printf("\n")
+		}
+		didDots = false
 
 		level, hasLevel := fields["level"].(string)
 		message, hasMessage := fields["message"].(string)
@@ -50,15 +79,22 @@ func main() {
 			fmt.Printf("%s: %s\n", levelColor(level), message)
 		}
 
-		nice, _ := json.MarshalIndent(fields, "|  ", "  ")
-		fmt.Printf("| %s\n", string(nice))
+		for k, v := range fields {
+			switch v.(type) {
+			case string, int, int64, int32, float64, bool:
+				fmt.Printf("| %s: %v\n", k, v)
+			default:
+				nice, _ := json.MarshalIndent(v, "|  ", "  ")
+				fmt.Printf("| %s: %s\n", k, string(nice))
+			}
+		}
 
 	}
 
 }
 
 var levelColors = map[string]color.Attribute{
-	"debug": color.FgWhite,
+	"debug": color.FgBlue,
 	"info":  color.FgGreen,
 	"warn":  color.FgYellow,
 	"error": color.FgRed,
