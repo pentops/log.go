@@ -112,7 +112,7 @@ func UnaryServerInterceptor(
 		func() {
 			defer func() {
 				if err := recover(); err != nil {
-					logPanic(ctx, logContextProvider, err, logger)
+					logPanic(logCtx, logContextProvider, err, logger)
 					mainError = status.Error(codes.Internal, "Internal Error")
 				}
 			}()
