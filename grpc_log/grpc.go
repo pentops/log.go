@@ -20,19 +20,13 @@ import (
 )
 
 type options struct {
-	shouldLog     grpc_logging.Decider
-	shouldLogBody grpc_logging.Decider
+	shouldLogBody alwaysDecider
 	codeFunc      grpc_logging.ErrorToCode
 }
 
-type Option func(*options)
+type alwaysDecider func(methodName string) bool
 
-// WithDecider customizes the function for deciding if the gRPC interceptor logs should log.
-func WithDecider(f grpc_logging.Decider) Option {
-	return func(o *options) {
-		o.shouldLog = f
-	}
-}
+type Option func(*options)
 
 // WithCodes customizes the function for mapping errors to error codes.
 func WithCodes(f grpc_logging.ErrorToCode) Option {
@@ -42,15 +36,14 @@ func WithCodes(f grpc_logging.ErrorToCode) Option {
 }
 
 // WithRequestBody customizes the function for deciding if the gRPC interceptor logs the request body.
-func WithRequestBody(f grpc_logging.Decider) Option {
+func WithRequestBody(f alwaysDecider) Option {
 	return func(o *options) {
 		o.shouldLogBody = f
 	}
 }
 
 var defaultOptions = &options{
-	shouldLog:     grpc_logging.DefaultDeciderMethod,
-	shouldLogBody: grpc_logging.DefaultDeciderMethod,
+	shouldLogBody: func(string) bool { return true },
 	codeFunc:      grpc_logging.DefaultErrorToCode,
 }
 
@@ -73,6 +66,8 @@ type TraceContext interface {
 
 type Logger interface {
 	Info(context.Context, string)
+	Error(context.Context, string)
+	Debug(context.Context, string)
 }
 
 func UnaryServerInterceptor(
@@ -105,7 +100,14 @@ func UnaryServerInterceptor(
 
 		logCtx := logContextProvider.WithFields(newCtx, nil)
 
-		logger.Info(logCtx, "GRPC Handler Begin")
+		if o.shouldLogBody(info.FullMethod) {
+			subContext := logContextProvider.WithFields(logCtx, map[string]interface{}{
+				"requestBody": logBody(req),
+			})
+			logger.Info(subContext, "GRPC Handler Begin")
+		} else {
+			logger.Info(logCtx, "GRPC Handler Begin")
+		}
 
 		var resp interface{}
 		var mainError error
@@ -119,16 +121,6 @@ func UnaryServerInterceptor(
 			resp, mainError = handler(newCtx, req)
 		}()
 
-		if o.shouldLogBody(info.FullMethod, mainError) {
-			logCtx = logContextProvider.WithFields(logCtx, map[string]interface{}{
-				"requestBody": logBody(req),
-			})
-		}
-
-		if !o.shouldLog(info.FullMethod, mainError) {
-			return resp, mainError
-		}
-
 		logCtx = logContextProvider.WithFields(logCtx, map[string]interface{}{
 			"durationSeconds": float32(time.Since(startTime).Nanoseconds()/1000) / 1000000,
 			"code":            o.codeFunc(mainError),
@@ -138,9 +130,10 @@ func UnaryServerInterceptor(
 			logCtx = logContextProvider.WithFields(logCtx, map[string]interface{}{
 				"error": mainError.Error(),
 			})
+			logger.Error(logCtx, "GRPC Handler Complete")
+		} else {
+			logger.Info(logCtx, "GRPC Handler Complete")
 		}
-
-		logger.Info(logCtx, "GRPC Handler Complete")
 		return resp, mainError
 	}
 }
@@ -206,9 +199,6 @@ func StreamServerInterceptor(
 		wrapped.WrappedContext = newCtx
 
 		err := handler(srv, wrapped)
-		if !o.shouldLog(info.FullMethod, err) {
-			return err
-		}
 
 		logCtx := logContextProvider.WithFields(newCtx, map[string]interface{}{
 			"duration": float32(time.Since(startTime).Nanoseconds()/1000) / 1000,
