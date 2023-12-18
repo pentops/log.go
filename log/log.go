@@ -150,7 +150,7 @@ func jsonFormatter(out io.Writer, entry logEntry) {
 			// been
 		})
 	}
-	out.Write(append(logLine, '\n'))
+	out.Write(append(logLine, '\n')) // nolint: errcheck
 }
 
 func SimplifyFields(fields map[string]interface{}) map[string]interface{} {

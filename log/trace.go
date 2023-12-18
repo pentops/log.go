@@ -2,7 +2,6 @@ package log
 
 import (
 	"context"
-	"io"
 )
 
 type TraceContextProvider interface {
@@ -12,8 +11,6 @@ type TraceContextProvider interface {
 }
 
 var DefaultTrace TraceContextProvider = TraceContext{}
-
-type logFormatter func(io.Writer, logEntry)
 
 type TraceContext struct{}
 

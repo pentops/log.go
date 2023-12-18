@@ -6,8 +6,6 @@ import (
 	"time"
 )
 
-type testLogger chan logEntry
-
 func assertEntry(t *testing.T, want logEntry, got logEntry) {
 	t.Helper()
 	if want.Level != got.Level {
