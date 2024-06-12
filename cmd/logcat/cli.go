@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/pentops/log.go/pretty"
+	"github.com/pentops/log.go/internal/pretty"
 )
 
 func main() {

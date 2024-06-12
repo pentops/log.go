@@ -25,6 +25,10 @@ func (ctx WrappedContext) Info(msg string) {
 	Info(ctx, msg)
 }
 
+func (ctx WrappedContext) Warn(msg string) {
+	Warn(ctx, msg)
+}
+
 func (ctx WrappedContext) Error(msg string) {
 	Error(ctx, msg)
 }

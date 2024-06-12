@@ -8,21 +8,55 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/fatih/color"
 	"golang.org/x/exp/slog"
 )
 
 type Logger interface {
+	SetLevel(slog.Level)
+
 	Debug(context.Context, string)
 	Info(context.Context, string)
 	Error(context.Context, string)
+	Warn(context.Context, string)
+
 	AddCollector(ContextCollector)
 
 	ErrorContext(ctx context.Context, msg string, args ...any)
 }
 
-var DefaultLogger Logger = NewCallbackLogger(JSONLog(os.Stderr))
+var DefaultLogger Logger
+
+func init() {
+
+	logFormat := os.Getenv("LOG_FORMAT")
+	var formatter LogFunc
+	switch logFormat {
+	case "pretty":
+		formatter = PrettyLog(os.Stderr, SkipFields("version", "app"))
+	default: // json and not set
+		formatter = JSONLog(os.Stderr)
+	}
+
+	DefaultLogger = NewCallbackLogger(formatter)
+
+	switch strings.ToLower(os.Getenv("LOG_LEVEL")) {
+	case "debug":
+		DefaultLogger.SetLevel(slog.LevelDebug)
+	case "info":
+		DefaultLogger.SetLevel(slog.LevelInfo)
+	case "warn":
+		DefaultLogger.SetLevel(slog.LevelWarn)
+	case "error":
+		DefaultLogger.SetLevel(slog.LevelError)
+	default:
+		DefaultLogger.SetLevel(slog.LevelInfo)
+	}
+
+}
 
 func Debug(ctx context.Context, msg string) {
 	DefaultLogger.Debug(ctx, msg)
@@ -38,6 +72,14 @@ func Info(ctx context.Context, msg string) {
 
 func Infof(ctx context.Context, msg string, params ...interface{}) {
 	DefaultLogger.Info(ctx, fmt.Sprintf(msg, params...))
+}
+
+func Warn(ctx context.Context, msg string) {
+	DefaultLogger.Warn(ctx, msg)
+}
+
+func Warnf(ctx context.Context, msg string, params ...interface{}) {
+	DefaultLogger.Warn(ctx, fmt.Sprintf(msg, params...))
 }
 
 func Error(ctx context.Context, msg string) {
@@ -64,6 +106,7 @@ func Fatalf(ctx context.Context, msg string, params ...interface{}) {
 type LogFunc func(level string, message string, fields map[string]interface{})
 
 type CallbackLogger struct {
+	Level      slog.Level
 	Callback   LogFunc
 	Collectors []ContextCollector
 }
@@ -75,15 +118,26 @@ func NewCallbackLogger(callback LogFunc) *CallbackLogger {
 	}
 }
 
+func (sl *CallbackLogger) SetLevel(level slog.Level) {
+	sl.Level = level
+}
+
 func (sl CallbackLogger) Debug(ctx context.Context, msg string) {
 	sl.log(ctx, slog.LevelDebug, msg)
 }
+
 func (sl CallbackLogger) Info(ctx context.Context, msg string) {
 	sl.log(ctx, slog.LevelInfo, msg)
 }
+
+func (sl CallbackLogger) Warn(ctx context.Context, msg string) {
+	sl.log(ctx, slog.LevelWarn, msg)
+}
+
 func (sl CallbackLogger) Error(ctx context.Context, msg string) {
 	sl.log(ctx, slog.LevelError, msg)
 }
+
 func (sl *CallbackLogger) AddCollector(collector ContextCollector) {
 	sl.Collectors = append(sl.Collectors, collector)
 }
@@ -101,6 +155,10 @@ func (sl CallbackLogger) ErrorContext(ctx context.Context, msg string, args ...a
 }
 
 func (sl CallbackLogger) slog(ctx context.Context, level slog.Level, msg string, args []any) {
+	if level < sl.Level {
+		return
+	}
+
 	fields := sl.extractFields(ctx)
 
 	// Using record to extract the args into a map
@@ -124,6 +182,9 @@ func (sl CallbackLogger) extractFields(ctx context.Context) map[string]interface
 }
 
 func (sl CallbackLogger) log(ctx context.Context, level slog.Level, msg string) {
+	if level < sl.Level {
+		return
+	}
 	fields := sl.extractFields(ctx)
 	sl.Callback(level.String(), msg, fields)
 }
@@ -176,5 +237,62 @@ func JSONLog(out io.Writer) LogFunc {
 			Message: msg,
 			Fields:  SimplifyFields(fields),
 		})
+	}
+}
+
+type loggerOptions struct {
+	skipFields map[string]struct{}
+}
+
+type LoggerOption func(*loggerOptions)
+
+func SkipFields(fields ...string) LoggerOption {
+	return func(o *loggerOptions) {
+		if o.skipFields == nil {
+			o.skipFields = map[string]struct{}{}
+		}
+		for _, field := range fields {
+			o.skipFields[field] = struct{}{}
+		}
+	}
+}
+
+func PrettyLog(out io.Writer, optionFuncs ...LoggerOption) LogFunc {
+	var levelColors = map[string]color.Attribute{
+		"debug": color.FgBlue,
+		"info":  color.FgGreen,
+		"warn":  color.FgYellow,
+		"error": color.FgRed,
+	}
+
+	options := &loggerOptions{}
+
+	for _, f := range optionFuncs {
+		f(options)
+	}
+
+	return func(level string, msg string, fields map[string]interface{}) {
+		whichColor, ok := levelColors[strings.ToLower(level)]
+		if !ok {
+			whichColor = color.FgWhite
+		}
+
+		levelColor := color.New(whichColor).SprintFunc()
+		fmt.Fprintf(out, "%s: %s\n", levelColor(level), msg)
+
+		for k, v := range fields {
+			if _, skip := options.skipFields[k]; skip {
+				continue
+			}
+
+			switch v.(type) {
+			case string, int, int64, int32, float64, bool:
+				fmt.Fprintf(out, "  | %s: %v\n", k, v)
+			default:
+				nice, _ := json.MarshalIndent(v, "  |  ", "  ")
+				fmt.Fprintf(out, "  | %s: %s\n", k, string(nice))
+			}
+		}
+
 	}
 }
