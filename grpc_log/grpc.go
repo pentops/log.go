@@ -168,7 +168,7 @@ func logPanic(ctx context.Context, logContextProvider FieldContext, panicString 
 		"stack": stack,
 	})
 
-	logger.Info(newCtx, "GRPC Handler Panic")
+	logger.Error(newCtx, "GRPC Handler Panic")
 }
 
 func StreamServerInterceptor(
