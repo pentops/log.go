@@ -4,10 +4,25 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"golang.org/x/exp/slog"
 )
 
-func assertEntry(t *testing.T, want logEntry, got logEntry) {
+type logLines struct {
+	entries []logEntry
+}
+
+func assertEntry(t *testing.T, want logEntry, lines *logLines) {
 	t.Helper()
+	if len(lines.entries) == 0 {
+		t.Fatalf("No log entries")
+	}
+	if len(lines.entries) > 1 {
+		t.Fatalf("More than one log entry")
+	}
+	got := lines.entries[0]
+	lines.entries = make([]logEntry, 0)
+
 	if want.Level != got.Level {
 		t.Errorf("Want level %s got %s", want.Level, got.Level)
 	}
@@ -31,20 +46,20 @@ func assertEntry(t *testing.T, want logEntry, got logEntry) {
 
 }
 
-func captureLogger() (Logger, chan logEntry) {
-	entries := make(chan logEntry, 1)
+func captureLogger() (Logger, *logLines) {
+	ll := &logLines{}
 	format := func(level string, msg string, fields map[string]interface{}) {
-		entries <- logEntry{
+		ll.entries = append(ll.entries, logEntry{
 			Level:   level,
 			Time:    time.Now(),
 			Message: msg,
 			Fields:  fields,
-		}
+		})
 	}
 	return &CallbackLogger{
 		Callback:   format,
 		Collectors: []ContextCollector{DefaultContext},
-	}, entries
+	}, ll
 }
 
 const (
@@ -56,31 +71,33 @@ const (
 func TestDefaultLogger(t *testing.T) {
 	logger, entries := captureLogger()
 	DefaultLogger = logger
+	logger.SetLevel(slog.LevelDebug)
 
 	ctx := context.Background()
 
 	Debug(ctx, "Message")
-	assertEntry(t, logEntry{Message: "Message", Level: debugLevel}, <-entries)
+	assertEntry(t, logEntry{Message: "Message", Level: debugLevel}, entries)
 
 	Debugf(ctx, "Message %s", "string")
-	assertEntry(t, logEntry{Message: "Message string", Level: debugLevel}, <-entries)
+	assertEntry(t, logEntry{Message: "Message string", Level: debugLevel}, entries)
 
 	Info(ctx, "Message")
-	assertEntry(t, logEntry{Message: "Message", Level: infoLevel}, <-entries)
+	assertEntry(t, logEntry{Message: "Message", Level: infoLevel}, entries)
 
 	Infof(ctx, "Message %s", "string")
-	assertEntry(t, logEntry{Message: "Message string", Level: infoLevel}, <-entries)
+	assertEntry(t, logEntry{Message: "Message string", Level: infoLevel}, entries)
 
 	Error(ctx, "Message")
-	assertEntry(t, logEntry{Message: "Message", Level: errorLevel}, <-entries)
+	assertEntry(t, logEntry{Message: "Message", Level: errorLevel}, entries)
 
 	Errorf(ctx, "Message %s", "string")
-	assertEntry(t, logEntry{Message: "Message string", Level: errorLevel}, <-entries)
+	assertEntry(t, logEntry{Message: "Message string", Level: errorLevel}, entries)
 
 }
 
 func TestContext(t *testing.T) {
 	logger, entries := captureLogger()
+	logger.SetLevel(slog.LevelDebug)
 
 	ctx := context.Background()
 
@@ -90,7 +107,7 @@ func TestContext(t *testing.T) {
 			Message: "Message",
 			Level:   debugLevel,
 			Fields:  map[string]interface{}{"key": "value"},
-		}, <-entries)
+		}, entries)
 	})
 
 	t.Run("TestWithFields", func(t *testing.T) {
@@ -102,7 +119,7 @@ func TestContext(t *testing.T) {
 			Fields: map[string]interface{}{
 				"key": "value",
 			},
-		}, <-entries)
+		}, entries)
 	})
 
 	t.Run("TestOverrideMerge", func(t *testing.T) {
@@ -123,6 +140,6 @@ func TestContext(t *testing.T) {
 				"2": "B",
 				"3": "B",
 			},
-		}, <-entries)
+		}, entries)
 	})
 }
