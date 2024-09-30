@@ -7,12 +7,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/fatih/color"
-	"golang.org/x/exp/slog"
 )
 
 type Logger interface {

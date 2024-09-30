@@ -2,10 +2,9 @@ package log
 
 import (
 	"context"
+	"log/slog"
 	"testing"
 	"time"
-
-	"golang.org/x/exp/slog"
 )
 
 type logLines struct {
