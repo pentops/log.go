@@ -189,6 +189,21 @@ func (sl CallbackLogger) log(ctx context.Context, level slog.Level, msg string) 
 	sl.Callback(level.String(), msg, fields)
 }
 
+type TB interface {
+	Logf(string, ...interface{})
+}
+
+func NewTestLogger(t TB) *CallbackLogger {
+	ll := NewCallbackLogger(func(level string, msg string, fields map[string]interface{}) {
+		t.Logf("%s: %s", level, msg)
+		for k, v := range fields {
+			t.Logf("  | %s: %v", k, v)
+		}
+	})
+	ll.SetLevel(slog.LevelDebug)
+	return ll
+}
+
 type ContextCollector interface {
 	LogFieldsFromContext(context.Context) map[string]interface{}
 }
