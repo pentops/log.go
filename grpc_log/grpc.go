@@ -15,8 +15,8 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/google/uuid"
-	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
-	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging"
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware/v2"
+	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 )
 
 type options struct {
