@@ -1,3 +1,11 @@
+> ! UNSTABLE !
+> This package was built prior to the slog package being added to the Go
+> standard library, and we are unaware of any uses outside of pentops and the
+> authors who are using it.
+>
+> The methods here are progressively being converted for compatibility with
+> log/slog
+
 Log
 ===
 
