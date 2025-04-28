@@ -3,6 +3,7 @@
 package log
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -62,7 +63,7 @@ func Debug(ctx context.Context, msg string) {
 	DefaultLogger.Debug(ctx, msg)
 }
 
-func Debugf(ctx context.Context, msg string, params ...interface{}) {
+func Debugf(ctx context.Context, msg string, params ...any) {
 	DefaultLogger.Debug(ctx, fmt.Sprintf(msg, params...))
 }
 
@@ -70,7 +71,7 @@ func Info(ctx context.Context, msg string) {
 	DefaultLogger.Info(ctx, msg)
 }
 
-func Infof(ctx context.Context, msg string, params ...interface{}) {
+func Infof(ctx context.Context, msg string, params ...any) {
 	DefaultLogger.Info(ctx, fmt.Sprintf(msg, params...))
 }
 
@@ -78,7 +79,7 @@ func Warn(ctx context.Context, msg string) {
 	DefaultLogger.Warn(ctx, msg)
 }
 
-func Warnf(ctx context.Context, msg string, params ...interface{}) {
+func Warnf(ctx context.Context, msg string, params ...any) {
 	DefaultLogger.Warn(ctx, fmt.Sprintf(msg, params...))
 }
 
@@ -86,7 +87,7 @@ func Error(ctx context.Context, msg string) {
 	DefaultLogger.Error(ctx, msg)
 }
 
-func Errorf(ctx context.Context, msg string, params ...interface{}) {
+func Errorf(ctx context.Context, msg string, params ...any) {
 	DefaultLogger.Error(ctx, fmt.Sprintf(msg, params...))
 }
 
@@ -99,11 +100,11 @@ func Fatal(ctx context.Context, msg string) {
 
 // Fatalf logs, then causes the current program to exit status 1
 // The program terminates immediately; deferred functions are not run.
-func Fatalf(ctx context.Context, msg string, params ...interface{}) {
+func Fatalf(ctx context.Context, msg string, params ...any) {
 	Fatal(ctx, fmt.Sprintf(msg, params...))
 }
 
-type LogFunc func(level string, message string, fields map[string]interface{})
+type LogFunc func(level string, message string, attrs []slog.Attr)
 
 type CallbackLogger struct {
 	Level      slog.Level
@@ -165,18 +166,16 @@ func (sl CallbackLogger) slog(ctx context.Context, level slog.Level, msg string,
 	record := slog.NewRecord(time.Time{}, level, msg, 0)
 	record.Add(args...)
 	record.Attrs(func(attr slog.Attr) bool {
-		fields[attr.Key] = attr.Value
+		fields = append(fields, attr)
 		return true
 	})
 	sl.Callback(level.String(), msg, fields)
 }
 
-func (sl CallbackLogger) extractFields(ctx context.Context) map[string]interface{} {
-	fields := map[string]interface{}{}
+func (sl CallbackLogger) extractFields(ctx context.Context) []slog.Attr {
+	fields := []slog.Attr{}
 	for _, cb := range sl.Collectors {
-		for k, v := range cb.LogFieldsFromContext(ctx) {
-			fields[k] = v
-		}
+		fields = append(fields, cb.LogFieldsFromContext(ctx)...)
 	}
 	return fields
 }
@@ -190,13 +189,15 @@ func (sl CallbackLogger) log(ctx context.Context, level slog.Level, msg string) 
 }
 
 type TB interface {
-	Logf(string, ...interface{})
+	Logf(string, ...any)
 }
 
 func NewTestLogger(t TB) *CallbackLogger {
-	ll := NewCallbackLogger(func(level string, msg string, fields map[string]interface{}) {
+	ll := NewCallbackLogger(func(level string, msg string, fields []slog.Attr) {
 		t.Logf("%s: %s", level, msg)
-		for k, v := range fields {
+		for _, attr := range fields {
+			k := attr.Key
+			v := attr.Value.Any()
 			t.Logf("  | %s: %v", k, v)
 		}
 	})
@@ -204,15 +205,49 @@ func NewTestLogger(t TB) *CallbackLogger {
 	return ll
 }
 
-type ContextCollector interface {
-	LogFieldsFromContext(context.Context) map[string]interface{}
+type logEntry struct {
+	Level   string    `json:"level"`
+	Time    time.Time `json:"time"`
+	Message string    `json:"message"`
+	Fields  attrMap   `json:"fields"`
 }
 
-type logEntry struct {
-	Level   string                 `json:"level"`
-	Time    time.Time              `json:"time"`
-	Message string                 `json:"message"`
-	Fields  map[string]interface{} `json:"fields"`
+type attrMap []slog.Attr
+
+func (aa attrMap) find(key string) (any, bool) {
+	for _, kv := range aa {
+		if kv.Key == key {
+			return kv.Value.Any(), true
+		}
+	}
+	return nil, false
+}
+
+func (aa attrMap) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+
+	buf.WriteString("{")
+	for i, kv := range aa {
+		if i != 0 {
+			buf.WriteString(",")
+		}
+		// marshal key
+		key, err := json.Marshal(kv.Key)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(key)
+		buf.WriteString(":")
+		// marshal value
+		val, err := json.Marshal(kv.Value.Any())
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(val)
+	}
+
+	buf.WriteString("}")
+	return buf.Bytes(), nil
 }
 
 func jsonFormatter(out io.Writer, entry logEntry) {
@@ -229,28 +264,13 @@ func jsonFormatter(out io.Writer, entry logEntry) {
 	out.Write(append(logLine, '\n')) // nolint: errcheck
 }
 
-func SimplifyFields(fields map[string]interface{}) map[string]interface{} {
-	simplified := map[string]interface{}{}
-	for k, v := range fields {
-		if err, ok := v.(error); ok {
-			v = err.Error()
-		} else if err, ok := v.(fmt.Stringer); ok {
-			v = err.String()
-		}
-
-		simplified[k] = v
-	}
-	return simplified
-}
-
 func JSONLog(out io.Writer) LogFunc {
-	return func(level string, msg string, fields map[string]interface{}) {
-
+	return func(level string, msg string, attrs []slog.Attr) {
 		jsonFormatter(out, logEntry{
 			Level:   level,
 			Time:    time.Now(),
 			Message: msg,
-			Fields:  SimplifyFields(fields),
+			Fields:  attrMap(attrs),
 		})
 	}
 }
@@ -286,7 +306,7 @@ func PrettyLog(out io.Writer, optionFuncs ...LoggerOption) LogFunc {
 		f(options)
 	}
 
-	return func(level string, msg string, fields map[string]interface{}) {
+	return func(level string, msg string, attrs []slog.Attr) {
 		whichColor, ok := levelColors[strings.ToLower(level)]
 		if !ok {
 			whichColor = color.FgWhite
@@ -295,7 +315,9 @@ func PrettyLog(out io.Writer, optionFuncs ...LoggerOption) LogFunc {
 		levelColor := color.New(whichColor).SprintFunc()
 		fmt.Fprintf(out, "%s: %s\n", levelColor(level), msg)
 
-		for k, v := range fields {
+		for _, attr := range attrs {
+			k := attr.Key
+			v := attr.Value.Any()
 			if _, skip := options.skipFields[k]; skip {
 				continue
 			}

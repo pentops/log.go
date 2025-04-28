@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"testing"
 )
 
@@ -14,8 +15,8 @@ func TestSimpleFormatter(t *testing.T) {
 	jsonFormatter(buff, logEntry{
 		Level:   "DEBUG",
 		Message: "Message",
-		Fields: map[string]interface{}{
-			"key": "val",
+		Fields: attrMap{
+			slog.String("key", "val"),
 		},
 	})
 
@@ -44,8 +45,9 @@ func TestSimpleFormatterError(t *testing.T) {
 	jsonFormatter(buff, logEntry{
 		Level:   "DEBUG",
 		Message: "Message",
-		Fields: map[string]interface{}{
-			"key": nojson{},
+
+		Fields: attrMap{
+			slog.Any("key", nojson{}),
 		},
 	})
 

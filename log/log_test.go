@@ -7,11 +7,18 @@ import (
 	"time"
 )
 
+type wantEntry struct {
+	Level   string
+	Time    time.Time
+	Message string
+	Fields  map[string]any
+}
+
 type logLines struct {
 	entries []logEntry
 }
 
-func assertEntry(t *testing.T, want logEntry, lines *logLines) {
+func assertEntry(t *testing.T, want wantEntry, lines *logLines) {
 	t.Helper()
 	if len(lines.entries) == 0 {
 		t.Fatalf("No log entries")
@@ -29,7 +36,7 @@ func assertEntry(t *testing.T, want logEntry, lines *logLines) {
 		t.Errorf(`Want message: "%s" got "%s"`, want.Message, got.Message)
 	}
 	for key, wantVal := range want.Fields {
-		gotVal, ok := got.Fields[key]
+		gotVal, ok := got.Fields.find(key)
 		if !ok {
 			t.Errorf("No key %s in fields", key)
 		}
@@ -47,12 +54,12 @@ func assertEntry(t *testing.T, want logEntry, lines *logLines) {
 
 func captureLogger() (Logger, *logLines) {
 	ll := &logLines{}
-	format := func(level string, msg string, fields map[string]interface{}) {
+	format := func(level string, msg string, fields []slog.Attr) {
 		ll.entries = append(ll.entries, logEntry{
 			Level:   level,
 			Time:    time.Now(),
 			Message: msg,
-			Fields:  fields,
+			Fields:  attrMap(fields),
 		})
 	}
 	return &CallbackLogger{
@@ -75,22 +82,22 @@ func TestDefaultLogger(t *testing.T) {
 	ctx := context.Background()
 
 	Debug(ctx, "Message")
-	assertEntry(t, logEntry{Message: "Message", Level: debugLevel}, entries)
+	assertEntry(t, wantEntry{Message: "Message", Level: debugLevel}, entries)
 
 	Debugf(ctx, "Message %s", "string")
-	assertEntry(t, logEntry{Message: "Message string", Level: debugLevel}, entries)
+	assertEntry(t, wantEntry{Message: "Message string", Level: debugLevel}, entries)
 
 	Info(ctx, "Message")
-	assertEntry(t, logEntry{Message: "Message", Level: infoLevel}, entries)
+	assertEntry(t, wantEntry{Message: "Message", Level: infoLevel}, entries)
 
 	Infof(ctx, "Message %s", "string")
-	assertEntry(t, logEntry{Message: "Message string", Level: infoLevel}, entries)
+	assertEntry(t, wantEntry{Message: "Message string", Level: infoLevel}, entries)
 
 	Error(ctx, "Message")
-	assertEntry(t, logEntry{Message: "Message", Level: errorLevel}, entries)
+	assertEntry(t, wantEntry{Message: "Message", Level: errorLevel}, entries)
 
 	Errorf(ctx, "Message %s", "string")
-	assertEntry(t, logEntry{Message: "Message string", Level: errorLevel}, entries)
+	assertEntry(t, wantEntry{Message: "Message string", Level: errorLevel}, entries)
 
 }
 
@@ -102,39 +109,39 @@ func TestContext(t *testing.T) {
 
 	t.Run("TestWithField", func(t *testing.T) {
 		logger.Debug(WithField(ctx, "key", "value"), "Message")
-		assertEntry(t, logEntry{
+		assertEntry(t, wantEntry{
 			Message: "Message",
 			Level:   debugLevel,
-			Fields:  map[string]interface{}{"key": "value"},
+			Fields:  map[string]any{"key": "value"},
 		}, entries)
 	})
 
 	t.Run("TestWithFields", func(t *testing.T) {
-		ctx := WithFields(ctx, map[string]interface{}{"key": "value"})
+		ctx := WithFields(ctx, map[string]any{"key": "value"})
 		logger.Debug(ctx, "Message")
-		assertEntry(t, logEntry{
+		assertEntry(t, wantEntry{
 			Message: "Message",
 			Level:   debugLevel,
-			Fields: map[string]interface{}{
+			Fields: map[string]any{
 				"key": "value",
 			},
 		}, entries)
 	})
 
 	t.Run("TestOverrideMerge", func(t *testing.T) {
-		ctx := WithFields(ctx, map[string]interface{}{
+		ctx := WithFields(ctx, map[string]any{
 			"1": "A",
 			"2": "A",
 		})
-		ctx = WithFields(ctx, map[string]interface{}{
+		ctx = WithFields(ctx, map[string]any{
 			"2": "B",
 			"3": "B",
 		})
 		logger.Debug(ctx, "Message")
-		assertEntry(t, logEntry{
+		assertEntry(t, wantEntry{
 			Message: "Message",
 			Level:   debugLevel,
-			Fields: map[string]interface{}{
+			Fields: map[string]any{
 				"1": "A",
 				"2": "B",
 				"3": "B",

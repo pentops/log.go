@@ -2,6 +2,7 @@ package log
 
 import (
 	"context"
+	"log/slog"
 )
 
 type TraceContextProvider interface {
@@ -28,12 +29,12 @@ func (sc TraceContext) FromContext(ctx context.Context) string {
 	return val
 }
 
-func (sc TraceContext) LogFieldsFromContext(ctx context.Context) map[string]interface{} {
+func (sc TraceContext) LogFieldsFromContext(ctx context.Context) []slog.Attr {
 	val, ok := ctx.Value(simpleTraceKey).(string)
 	if !ok {
-		return map[string]interface{}{}
+		return []slog.Attr{}
 	}
-	return map[string]interface{}{
-		"trace": val,
+	return []slog.Attr{
+		slog.String("trace", val),
 	}
 }

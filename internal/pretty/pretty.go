@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"reflect"
 	"strings"
 
@@ -64,12 +65,12 @@ func (p *Printer) writef(namePrefix, line string, args ...interface{}) {
 }
 
 func (p *Printer) CallbackWithPrefix(prefix string) log.LogFunc {
-	return log.LogFunc(func(level string, message string, fields map[string]interface{}) {
-		p.PrintStandardLine(prefix, level, message, fields)
+	return log.LogFunc(func(level string, message string, attrs []slog.Attr) {
+		p.PrintStandardLine(prefix, level, message, attrs)
 	})
 }
 
-func (p *Printer) PrintStandardLine(namePrefix, level, message string, fields map[string]interface{}) {
+func (p *Printer) PrintStandardLine(namePrefix, level, message string, attrs []slog.Attr) {
 	whichColor, ok := levelColors[strings.ToLower(level)]
 	if !ok {
 		whichColor = color.FgWhite
@@ -78,7 +79,9 @@ func (p *Printer) PrintStandardLine(namePrefix, level, message string, fields ma
 	levelColor := color.New(whichColor).SprintFunc()
 	p.writef(namePrefix, "%s: %s", levelColor(level), message)
 
-	for k, v := range fields {
+	for _, attr := range attrs {
+		k := attr.Key
+		v := attr.Value.Any()
 		switch v.(type) {
 		case string, int, int64, int32, float64, bool:
 			fmt.Fprintf(p.output, "| %s: %v\n", k, v)
@@ -154,7 +157,11 @@ func (p *Printer) PrintRawLine(namePrefix, line string) {
 	innerFields, hasFields := fields["fields"].(map[string]interface{})
 
 	if hasLevel && hasMessage && hasFields && len(fields) == 3 {
-		p.PrintStandardLine(namePrefix, level, message, innerFields)
+		innerFieldAttrs := make([]slog.Attr, 0, len(innerFields))
+		for k, v := range innerFields {
+			innerFieldAttrs = append(innerFieldAttrs, slog.Any(k, v))
+		}
+		p.PrintStandardLine(namePrefix, level, message, innerFieldAttrs)
 	} else {
 		p.writef(namePrefix, line)
 	}
