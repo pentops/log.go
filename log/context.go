@@ -113,7 +113,7 @@ func mapToAttrs(fields map[string]any) []slog.Attr {
 	}
 	sort.StringSlice(keys).Sort()
 
-	attrs := make([]slog.Attr, len(keys))
+	attrs := make([]slog.Attr, 0, len(keys))
 	for _, k := range keys {
 		attrs = append(attrs, slog.Any(k, fields[k]))
 	}
