@@ -23,7 +23,7 @@ type Printer struct {
 	prefix   string
 	output   io.Writer
 	didDots  bool
-	lastLine map[string]interface{}
+	lastLine map[string]any
 }
 
 func WithPrefix(prefix string) func(*Printer) {
@@ -44,7 +44,7 @@ func NewPrinter(output io.Writer, opts ...func(*Printer)) *Printer {
 	return pp
 }
 
-func (p *Printer) writef(namePrefix, line string, args ...interface{}) {
+func (p *Printer) writef(namePrefix, line string, args ...any) {
 	if p.didDots {
 		fmt.Fprintf(p.output, "\n")
 		p.didDots = false
@@ -127,12 +127,12 @@ func (p *Printer) PrintRawLine(namePrefix, line string) {
 
 	if line[0] != '{' {
 		p.didDots = false
-		p.lastLine = map[string]interface{}{}
+		p.lastLine = map[string]any{}
 		p.writef(namePrefix, line)
 		return
 	}
 
-	fields := map[string]interface{}{}
+	fields := map[string]any{}
 	err := json.Unmarshal([]byte(line), &fields)
 	if err != nil {
 		p.writef(namePrefix, "<invalid JSON> %s", line)
@@ -154,7 +154,7 @@ func (p *Printer) PrintRawLine(namePrefix, line string) {
 
 	level, hasLevel := fields["level"].(string)
 	message, hasMessage := fields["message"].(string)
-	innerFields, hasFields := fields["fields"].(map[string]interface{})
+	innerFields, hasFields := fields["fields"].(map[string]any)
 
 	if hasLevel && hasMessage && hasFields && len(fields) == 3 {
 		innerFieldAttrs := make([]slog.Attr, 0, len(innerFields))

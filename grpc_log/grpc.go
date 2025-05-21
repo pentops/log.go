@@ -78,7 +78,7 @@ func UnaryServerInterceptor(
 	options ...Option,
 ) grpc.UnaryServerInterceptor {
 	o := evaluateServerOpt(options)
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		startTime := time.Now()
 		newCtx := logContextProvider.WithAttrs(ctx, slog.String("method", info.FullMethod))
 
@@ -105,7 +105,7 @@ func UnaryServerInterceptor(
 			logger.Info(logCtx, "GRPC Handler Begin")
 		}
 
-		var resp interface{}
+		var resp any
 		var mainError error
 		func() {
 			defer func() {
@@ -132,7 +132,7 @@ func UnaryServerInterceptor(
 	}
 }
 
-func logBody(msg interface{}) string {
+func logBody(msg any) string {
 	if p, ok := msg.(proto.Message); ok {
 		msgBytes, err := protojson.Marshal(p)
 		if err != nil {
@@ -172,7 +172,7 @@ func StreamServerInterceptor(
 	options ...Option,
 ) grpc.StreamServerInterceptor {
 	o := evaluateServerOpt(options)
-	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	return func(srv any, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		startTime := time.Now()
 		newCtx := logContextProvider.WithAttrs(stream.Context(), slog.String("method", info.FullMethod))
 

@@ -21,7 +21,7 @@ func TestSimpleFormatter(t *testing.T) {
 	})
 
 	loggedJSON := buff.Bytes()
-	logged := map[string]interface{}{}
+	logged := map[string]any{}
 	if err := json.Unmarshal(loggedJSON, &logged); err != nil {
 		t.Fatalf("Error decoding log message: %s", err.Error())
 	}
@@ -52,7 +52,7 @@ func TestSimpleFormatterError(t *testing.T) {
 	})
 
 	loggedJSON := buff.Bytes()
-	logged := map[string]interface{}{}
+	logged := map[string]any{}
 	if err := json.Unmarshal(loggedJSON, &logged); err != nil {
 		t.Fatalf("Error decoding log message: %s", err.Error())
 	}

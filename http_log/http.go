@@ -9,7 +9,7 @@ import (
 )
 
 type FieldContext interface {
-	WithFields(context.Context, map[string]interface{}) context.Context
+	WithFields(context.Context, map[string]any) context.Context
 }
 
 type TraceContext interface {
@@ -40,7 +40,7 @@ func Middleware(
 			req.Header.Set("Grpc-Metadata-x-trace", trace)
 
 			ctx := req.Context()
-			ctx = logContextProvider.WithFields(ctx, map[string]interface{}{
+			ctx = logContextProvider.WithFields(ctx, map[string]any{
 				"method":   req.Method,
 				"path":     req.URL.Path,
 				"protocol": req.Proto,
@@ -54,7 +54,7 @@ func Middleware(
 				status:         http.StatusOK,
 			}
 			next.ServeHTTP(ss, req)
-			ctx = logContextProvider.WithFields(ctx, map[string]interface{}{
+			ctx = logContextProvider.WithFields(ctx, map[string]any{
 				"method":     req.Method,
 				"path":       req.URL.Path,
 				"protocol":   req.Proto,
