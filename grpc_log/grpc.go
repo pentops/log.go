@@ -3,6 +3,7 @@ package grpc_log
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"runtime"
 	"strings"
 	"time"
@@ -57,7 +58,7 @@ func evaluateServerOpt(opts []Option) *options {
 }
 
 type FieldContext interface {
-	WithFields(context.Context, map[string]interface{}) context.Context
+	WithAttrs(context.Context, ...slog.Attr) context.Context
 }
 
 type TraceContext interface {
@@ -79,10 +80,7 @@ func UnaryServerInterceptor(
 	o := evaluateServerOpt(options)
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		startTime := time.Now()
-		logFields := map[string]interface{}{
-			"method": info.FullMethod,
-		}
-		newCtx := logContextProvider.WithFields(ctx, logFields)
+		newCtx := logContextProvider.WithAttrs(ctx, slog.String("method", info.FullMethod))
 
 		md, ok := metadata.FromIncomingContext(newCtx)
 		if ok {
@@ -98,12 +96,10 @@ func UnaryServerInterceptor(
 			newCtx = metadata.AppendToOutgoingContext(newCtx, "x-trace", traceHeader)
 		}
 
-		logCtx := logContextProvider.WithFields(newCtx, nil)
+		logCtx := logContextProvider.WithAttrs(newCtx) // empty clone
 
 		if o.shouldLogBody(info.FullMethod) {
-			subContext := logContextProvider.WithFields(logCtx, map[string]interface{}{
-				"requestBody": logBody(req),
-			})
+			subContext := logContextProvider.WithAttrs(logCtx, slog.Any("requestBody", logBody(req)))
 			logger.Info(subContext, "GRPC Handler Begin")
 		} else {
 			logger.Info(logCtx, "GRPC Handler Begin")
@@ -121,15 +117,13 @@ func UnaryServerInterceptor(
 			resp, mainError = handler(newCtx, req)
 		}()
 
-		logCtx = logContextProvider.WithFields(logCtx, map[string]interface{}{
-			"durationSeconds": float32(time.Since(startTime).Nanoseconds()/1000) / 1000000,
-			"code":            o.codeFunc(mainError),
-		})
+		logCtx = logContextProvider.WithAttrs(logCtx,
+			slog.Float64("durationSeconds", float64(time.Since(startTime).Nanoseconds()/1000)/1000000),
+			slog.String("code", o.codeFunc(mainError).String()),
+		)
 
 		if mainError != nil {
-			logCtx = logContextProvider.WithFields(logCtx, map[string]interface{}{
-				"error": mainError.Error(),
-			})
+			logCtx = logContextProvider.WithAttrs(logCtx, slog.String("error", mainError.Error()))
 			logger.Error(logCtx, "GRPC Handler Complete")
 		} else {
 			logger.Info(logCtx, "GRPC Handler Complete")
@@ -149,7 +143,7 @@ func logBody(msg interface{}) string {
 	return fmt.Sprintf("Non proto message of type %T", msg)
 }
 
-func logPanic(ctx context.Context, logContextProvider FieldContext, panicString interface{}, logger Logger) {
+func logPanic(ctx context.Context, logContextProvider FieldContext, panicValue any, logger Logger) {
 	into := make([]byte, 2048)
 	runtime.Stack(into, false)
 
@@ -163,10 +157,10 @@ func logPanic(ctx context.Context, logContextProvider FieldContext, panicString 
 		stack[i] = strings.Replace(line, "\t", "    ", 1)
 	}
 
-	newCtx := logContextProvider.WithFields(ctx, map[string]interface{}{
-		"error": panicString,
-		"stack": stack,
-	})
+	newCtx := logContextProvider.WithAttrs(ctx,
+		slog.Any("error", panicValue),
+		slog.Any("stack", strings.Join(stack, "\n")),
+	)
 
 	logger.Error(newCtx, "GRPC Handler Panic")
 }
@@ -180,10 +174,7 @@ func StreamServerInterceptor(
 	o := evaluateServerOpt(options)
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		startTime := time.Now()
-		logFields := map[string]interface{}{
-			"method": info.FullMethod,
-		}
-		newCtx := logContextProvider.WithFields(stream.Context(), logFields)
+		newCtx := logContextProvider.WithAttrs(stream.Context(), slog.String("method", info.FullMethod))
 
 		md, ok := metadata.FromIncomingContext(newCtx)
 		if ok {
@@ -200,10 +191,10 @@ func StreamServerInterceptor(
 
 		err := handler(srv, wrapped)
 
-		logCtx := logContextProvider.WithFields(newCtx, map[string]interface{}{
-			"duration": float32(time.Since(startTime).Nanoseconds()/1000) / 1000,
-			"code":     o.codeFunc(err),
-		})
+		logCtx := logContextProvider.WithAttrs(newCtx,
+			slog.Float64("duration", float64(time.Since(startTime).Nanoseconds()/1000)/1000),
+			slog.String("code", o.codeFunc(err).String()),
+		)
 
 		logger.Info(logCtx, "GRPC Stream Complete")
 		return err

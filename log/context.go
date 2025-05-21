@@ -13,7 +13,7 @@ type ContextCollector interface {
 var DefaultContext FieldContextProvider = &MapContext{}
 
 type FieldContextProvider interface {
-	WithAttrs(context.Context, []slog.Attr) context.Context
+	WithAttrs(context.Context, ...slog.Attr) context.Context
 	ContextCollector
 }
 
@@ -44,7 +44,7 @@ func (ctx WrappedContext) Error(msg string) {
 func WithFields(ctx context.Context, args ...any) *WrappedContext {
 	attrs := collectArgs(args...)
 	return &WrappedContext{
-		Context: DefaultContext.WithAttrs(ctx, attrs),
+		Context: DefaultContext.WithAttrs(ctx, attrs...),
 	}
 }
 
@@ -60,7 +60,7 @@ type MapContext struct{}
 
 var simpleContextKey = MapContext{}
 
-func (sc MapContext) WithAttrs(parent context.Context, attrs []slog.Attr) context.Context {
+func (sc MapContext) WithAttrs(parent context.Context, attrs ...slog.Attr) context.Context {
 	existing, ok := parent.Value(simpleContextKey).([]slog.Attr)
 	if !ok {
 		return context.WithValue(parent, simpleContextKey, attrs)
